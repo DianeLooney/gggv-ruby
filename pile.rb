@@ -1,4 +1,12 @@
 load './lib/pile.rb'
+load './lib/gggv.rb'
+
+shatter = Program.new("fx.shatter", "shaders/vert/fx.shatter.glsl", "shaders/geom/fx.shatter.glsl", "shaders/frag/fx.shatter.glsl")
+video = FFVideo.new("funtimes", "sample.mp4")
+window = Window.new
+window.program = shatter
+window.set_input(0, video)
+
 tempo(120)
 beat_now
 
@@ -11,3 +19,6 @@ stop(:banana)
 stop(:carrot)
 
 fuck
+@client
+message = OSC::Message.new('/a', 'b', 'c')
+@client.send(message)

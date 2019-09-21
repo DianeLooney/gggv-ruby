@@ -32,12 +32,20 @@ Object.class_eval do
   alias fuck fuck_it
   alias fuckit fuck_it
 
+  def beat_now
+    $metronome.beat_now
+  end
+
   def on(remainder, divisor, name = nil)
     $metronome.on(remainder, divisor, name)
   end
 
   def once(remainder, divisor)
     $metronome.on(remainder, divisor)
+  end
+
+  def stop(name)
+    $metronome.stop(name)
   end
 end
 
@@ -161,14 +169,14 @@ class Metronome < Generator
 
   def initialize(bpm)
     @bpm = bpm
-    @delta = 0.01
+    @delta = 0.002
     @listeners = []
 
     @current_beat = 0
   end
 
   def set_bpm(bpm)
-    @bpm = bpm
+    @bpm = bpm.to_f
   end
 
   def once(remainder, divisor)
@@ -182,18 +190,19 @@ class Metronome < Generator
   end
 
   def on(remainder, divisor, name = nil)
-    puts "On(#{remainder}, #{divisor}, #{name})"
     pipe = Pipe.new
     beat = (@current_beat / divisor).floor * divisor + remainder
     beat += divisor if beat < @current_beat
 
     @listeners.reject! { |x| x.name == name }
     @listeners.push(Listener.new(beat, remainder, divisor, pipe, name))
-    @listeners.each do |listener|
-      puts listener
-    end
 
     pipe
+  end
+
+  def beat_now
+    @current_beat = @current_beat.ceil
+    @current_time = Time.now
   end
 
   def start
@@ -210,7 +219,7 @@ class Metronome < Generator
         to_send, @listeners = @listeners.partition { |listener| listener.beat < @current_beat }
 
         to_send.each do |listener|
-          listener.pipe.send({ beat: @current_beat, time: @current_time })
+          listener.pipe.send({ beat: listener.beat, time: @current_time })
           next if listener.divisor.zero?
 
           @listeners.push(Listener.new(
@@ -225,9 +234,14 @@ class Metronome < Generator
     end
   end
 
-  def stop
-    @thread&.exit
-    @thread = nil
+  def stop(name = nil)
+    puts "Called stop"
+    if name
+      @listeners.reject! { |x| x.name == name }
+    else
+      @thread&.exit
+      @thread = nil
+    end
   end
 end
 

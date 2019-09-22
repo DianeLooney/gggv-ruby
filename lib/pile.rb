@@ -23,11 +23,27 @@ Object.class_eval do
     TakePipe.new(*args)
   end
 
+  def toggle(*args)
+    Toggle.new(*args)
+  end
+
   def fuck_it
     ObjectSpace.each_object(Generator).each(&:stop)
     ObjectSpace.each_object(Metronome).each do |metronome|
       metronome.stop unless metronome == $metronome
     end
+
+    ObjectSpace.each_object(MidiGenerator).each do |midi|
+      midi.stop
+    end
+
+    loop do
+      break unless $midi_in.read(1)
+    end
+    $midi_in.close
+    $midi_in = Portmidi::Input.new(Portmidi.input_devices.find { |x| x.name == 'Launchpad MK2' }.device_id)
+    $midi_out.close
+    $midi_out = Portmidi::Output.new(Portmidi.output_devices.find { |x| x.name == 'Launchpad MK2' }.device_id)
   end
   alias fuck fuck_it
   alias fuckit fuck_it
@@ -49,6 +65,50 @@ Object.class_eval do
   end
 end
 
+class Pipeline < Array
+  def send(value)
+    each do |entry|
+      output = entry.send(value)
+      p entry, output
+      return if output.nil?
+
+      value = output
+    end
+
+    @children&.each do |child|
+      child.send(value)
+    end
+  end
+
+  def |(value)
+    if value.is_a? Pipe
+      push(value)
+    elsif value.is_a? Proc
+      push(ExecPipe.new(value))
+    elsif value.is_a? Toggle
+      push(value)
+    elsif value.is_a? Pipeline
+      concat(value)
+    else
+      raise "Not sure what to do with this in Pipeline's | operator: #{value}"
+    end
+
+    self
+  end
+
+  def >>(value)
+    p = Pipeline.new
+    (@children ||= []).push(p)
+    p | value
+  end
+
+  def >(value)
+    last > value
+
+    self
+  end
+end
+
 class Pipe
   def initialize(*options)
     @options = options
@@ -56,29 +116,39 @@ class Pipe
   end
 
   def |(value)
-    value = ExecPipe.new(value) if value.is_a? Proc
+    p = Pipeline.new
+    p | self
+    p | value
+  end
 
-    @children.push(value)
+  def send(value)
+    value
+  end
+end
+
+class Toggle < Pipe
+  def initialize
+    @i = 0
+    @children = []
+  end
+  
+  def send(value)
+    return unless @children.any?
+    @i = @i % @children.count
+    @children[@i].send(value)
+    @i += 1
 
     value
   end
 
-  def send(value)
-    @children.each do |child|
-      if child.is_a? Pipe
-        child.send(value)
-      elsif child.is_a? Proc
-        child.call(value)
-      end
-    end
+  def >(value)
+    @children.push(value)
   end
 end
 
 class ExecPipe < Pipe
   def send(value)
     proc.call(value)
-
-    super
   end
 
   private
@@ -89,11 +159,9 @@ class ExecPipe < Pipe
 end
 
 class DelayPipe < Pipe
-  def send(*_args)
-    Thread.new do
-      sleep(duration)
-      super
-    end
+  def send(value)
+    sleep(duration)
+    value
   end
 
   private
@@ -138,6 +206,18 @@ class MaybePipe < Pipe
 end
 
 class Generator < Pipe
+  def >>(value)
+    p = Pipeline.new
+    @children.push(p)
+    p | value
+  end
+
+  def send(value)
+    @children.each do |child|
+      child.send(value)
+    end
+  end
+
   def start; end
   def stop; end
 end
@@ -235,7 +315,6 @@ class Metronome < Generator
   end
 
   def stop(name = nil)
-    puts "Called stop"
     if name
       @listeners.reject! { |x| x.name == name }
     else

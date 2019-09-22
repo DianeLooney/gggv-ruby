@@ -1,4 +1,3 @@
-require 'rubygems'
 require 'osc-ruby'
 
 $client = OSC::Client.new('localhost', 4200)

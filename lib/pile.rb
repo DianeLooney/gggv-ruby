@@ -36,14 +36,6 @@ Object.class_eval do
     ObjectSpace.each_object(MidiGenerator).each do |midi|
       midi.stop
     end
-
-    loop do
-      break unless $midi_in.read(1)
-    end
-    $midi_in.close
-    $midi_in = Portmidi::Input.new(Portmidi.input_devices.find { |x| x.name == 'Launchpad MK2' }.device_id)
-    $midi_out.close
-    $midi_out = Portmidi::Output.new(Portmidi.output_devices.find { |x| x.name == 'Launchpad MK2' }.device_id)
   end
   alias fuck fuck_it
   alias fuckit fuck_it
@@ -69,7 +61,6 @@ class Pipeline < Array
   def send(value)
     each do |entry|
       output = entry.send(value)
-      p entry, output
       return if output.nil?
 
       value = output
